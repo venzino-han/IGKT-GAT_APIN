@@ -3,7 +3,7 @@ key: igmc
 model:
   type: IGMC
   hop: 1
-  num_relations: 2
+  num_relations: 6
   latent_dims:
     - 32
     - 32
@@ -11,10 +11,9 @@ model:
     - 32
   edge_dropout: 0.
 
-# dataset:
+dataset:
+  max_seq: 64
 #   name: amazon_clothing
-#   file_name: clothing_core
-#   efeat: ~
 
 train:
   device: 0

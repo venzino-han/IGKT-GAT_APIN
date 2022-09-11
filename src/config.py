@@ -1,6 +1,6 @@
 device = "cuda"
 # device = "cpu"
-MAX_SEQ = 64
+# MAX_SEQ = 128
 EMBED_DIMS = 32
 ENC_HEADS = DEC_HEADS = 4
 NUM_ENCODER = NUM_DECODER = 6

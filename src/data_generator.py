@@ -9,6 +9,7 @@ import torch as th
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
+import scipy
 from scipy.sparse import coo_matrix
 
 import dgl
@@ -38,23 +39,17 @@ def get_subgraph_label(graph:dgl.graph,
     subgraph = dgl.add_self_loop(subgraph)
     subgraph.edata['edge_mask'] = th.ones(subgraph.number_of_edges(), dtype=th.float32)
     target_edges = subgraph.edge_ids([0, 1], [1, 0], return_uv=False)
-    # target_edges = target_edges.type(th.int64)
-    # subgraph.edata['edge_mask'][target_edges] = 0
 
-    # timestamps = subgraph.edata['ts']
-    # standard_ts = timestamps[target_edges.to(th.long)[0]]
-    # timestamps = th.abs(timestamps - standard_ts.item())
-    # timestamps = 1 - (timestamps - th.min(timestamps)) / (th.max(timestamps)-th.min(timestamps) + 1e-5)
-    # subgraph.edata['ts'] = timestamps + 1e-5
     subgraph.remove_edges(target_edges)
     return subgraph
 
 
 class Riiid_Sequence_Graph(Dataset):
-    def __init__(self, user_groups, item_groups, df, seq_len):
+    def __init__(self, user_groups, item_groups, df, part_matrix, tag_coo_matrix, seq_len):
         self.user_seq_dict = {}
         self.seq_len = seq_len
         self.user_ids = []
+        self.part_matrix, self.tag_coo_matrix = part_matrix, tag_coo_matrix,
 
         self.user_id_set = set()
 
@@ -104,22 +99,19 @@ class Riiid_Sequence_Graph(Dataset):
             target_cid = user_seq[0]
             target_cid = target_cid[-1]
             u_id, part, t_c_id, t_lag, q_et, ans_c, q_he, u_ans, ts = item_groups[target_cid]
-            n = self.seq_len
+            n = self.seq_len #*2
             if n > len(u_id):
                 n =len(u_id)
             indices = np.random.choice(len(u_id), n, replace=False)
             self.item_seq_dict[user_seq_id] = u_id[indices]
 
         # build user-exe matrix
-        # TODO: build matrix with train + val
         uids = df['user_id']
         eids = df['content_id']
         correctness = df['answered_correctly']
         num_user = max(uids)+1
         print(num_user)
         print(num_user+config.TOTAL_EXE)
-        # uids, eids = np.array(uids), np.array(eids)
-        # correctness = np.array(correctness)
 
         uids += config.TOTAL_EXE
         num_nodes = num_user+config.TOTAL_EXE
@@ -135,6 +127,70 @@ class Riiid_Sequence_Graph(Dataset):
         self.graph.ndata['node_id'] = th.tensor(list(range(num_nodes)), dtype=th.int32)
         self.graph.edata['label'] = th.tensor(correctness, dtype=th.float32)
         self.graph.edata['etype'] = th.tensor(correctness, dtype=th.int32)
+        
+        # n = subg.number_of_edges()//4
+        # for k in range(additional_edges_que.qsize()):
+        #     if k > n :
+        #         break
+        #     neg_count, (i, j) = additional_edges_que.get()
+        #     cooc_count = -neg_count
+        #     i_ntype, j_ntype = ntypes[oid_nid_dict[i]], ntypes[oid_nid_dict[j]]
+        #     e = self._get_etype(i_ntype, j_ntype, ntypes)
+        #     e_vec = [0]*8
+        #     e_vec[e] = 1 
+        #     etypes += [e_vec, e_vec]
+        #     keyword_cooc_counts += [cooc_count, cooc_count]
+        #     src += [oid_nid_dict[i], oid_nid_dict[j]]
+        #     dst += [oid_nid_dict[j], oid_nid_dict[i]]
+
+        # norm_keyword_cooc_counts = (np.array(keyword_cooc_counts)-self.min_count)/max_count
+        # norm_keyword_cooc_counts = np.tile(norm_keyword_cooc_counts, (8,1)).T
+        # n_edges = len(keyword_cooc_counts)
+
+        src, dst, etypes = [], [], []
+
+        # part_matrix = self.part_matrix.todok()
+        # tag_coo_matrix = self.tag_coo_matrix.todok()
+
+        # add part, tag edges
+        # for i in range(config.TOTAL_EXE):
+        #     for j in range(config.TOTAL_EXE):
+        print('start part')
+        for i in self.part_matrix.keys():
+            for j in self.part_matrix[i].keys():
+                if i==j: continue
+                part = self.part_matrix[i][j]
+                if part > 0:
+                    src.append(i)
+                    dst.append(j)
+                    etypes.append(2)
+
+        print('start tag')
+        for i in self.tag_coo_matrix.keys():
+            for j in self.tag_coo_matrix[i].keys():
+                if i==j: continue
+                tag_coo = self.tag_coo_matrix[i][j]
+                if tag_coo == 1:
+                    src.append(i)
+                    dst.append(j)
+                    etypes.append(3)
+                elif tag_coo == 2:
+                    src.append(i)
+                    dst.append(j)
+                    etypes.append(4)
+                elif tag_coo >= 3:
+                    src.append(i)
+                    dst.append(j)
+                    etypes.append(5)
+               
+        print('start adding edges')
+        n_edges =  len(etypes)
+        edata = {
+            'etype': th.tensor(np.array(etypes), dtype=th.int32),
+            'label': th.tensor(np.array([1.]*n_edges), dtype=th.float32),
+        }
+
+        self.graph.add_edges(src, dst, data=edata)
 
     def __len__(self):
         return len(self.user_ids)
@@ -148,9 +204,6 @@ class Riiid_Sequence_Graph(Dataset):
         #build graph
         # content_ids = content_ids[1:]
         # parts = parts[1:]
-        # task_container_ids = task_container_ids[1:]
-        # time_lag = time_lag[1:]
-        # ques_elapsed_time = ques_elapsed_time[1:]
         label = ans_c[1:] - 1
         label = np.clip(label, 0, 1)
         
@@ -173,6 +226,7 @@ class Riiid_Sequence_Graph(Dataset):
                                       u_neighbors=th.tensor(u_neighbors), 
                                       i_neighbors=th.tensor(i_neighbors),           
                                     )
+        
 
         return subgraph, th.tensor(label, dtype=th.float32)
 
@@ -184,6 +238,14 @@ def collate_data(data):
     return g, g_label
 
 def get_dataloader(batch_size, num_workers=8, seq_len=64):
+    # part_matrix = scipy.sparse.load_npz('./data/part_matrix.npz')
+    # tag_coo_matrix = scipy.sparse.load_npz('./data/tag_coo_matrix.npz')
+    with open('./data/part_matrix.pkl', 'rb') as pick:
+        part_matrix = pickle.load(pick)
+    with open("data/tag_coo_matrix.pkl", 'rb') as pick:
+        tag_coo_matrix = pickle.load(pick)
+
+
     train_df = pd.read_csv('data/train_df.csv')
     test_df = pd.read_csv('data/test_df.csv')
 
@@ -192,7 +254,8 @@ def get_dataloader(batch_size, num_workers=8, seq_len=64):
     with open("data/train_item_group.pkl.zip", 'rb') as pick:
         train_item_group = pickle.load(pick)
     
-    train_seq_graph = Riiid_Sequence_Graph(train_user_group, train_item_group, df=train_df, seq_len=seq_len)
+    train_seq_graph = Riiid_Sequence_Graph(train_user_group, train_item_group, df=train_df, 
+                                           part_matrix=part_matrix, tag_coo_matrix=tag_coo_matrix, seq_len=seq_len)
     train_loader = DataLoader(train_seq_graph, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                                 collate_fn=collate_data, pin_memory=True)
 
@@ -201,7 +264,8 @@ def get_dataloader(batch_size, num_workers=8, seq_len=64):
     with open("data/val_item_group.pkl.zip", 'rb') as pick:
         val_item_group = pickle.load(pick)
 
-    test_seq_graph = Riiid_Sequence_Graph(val_user_group, val_item_group, df=test_df, seq_len=seq_len)
+    test_seq_graph = Riiid_Sequence_Graph(val_user_group, val_item_group, df=test_df, 
+                                          part_matrix=part_matrix, tag_coo_matrix=tag_coo_matrix, seq_len=seq_len)
     test_loader = DataLoader(test_seq_graph, batch_size=batch_size, shuffle=False, num_workers=num_workers,
                                 collate_fn=collate_data, pin_memory=True)
 

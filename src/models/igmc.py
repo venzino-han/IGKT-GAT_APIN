@@ -73,7 +73,7 @@ class IGMC(nn.Module):
         if self.regression:
             return x[:, 0] * self.multiply_by
         else:
-            assert False
+            return F.log_softmax(x, dim=-1)
 
     def __repr__(self):
         return self.__class__.__name__

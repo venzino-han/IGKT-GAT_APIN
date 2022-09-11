@@ -1,2 +1,3 @@
 files:
-  - ./train_configs/igmc.yaml
+  - ./train_configs/igmc_64.yaml
+  - ./train_configs/igmc_128.yaml

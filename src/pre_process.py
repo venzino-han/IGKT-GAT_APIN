@@ -1,3 +1,8 @@
+"""
+pre-processing module build 
+"""
+
+
 import time
 import pickle
 import numpy as np
@@ -5,7 +10,6 @@ import pandas as pd
 from utils import get_time_lag
 
 from copy import copy
-
 
 data_type ={
     "timestamp": "int64",

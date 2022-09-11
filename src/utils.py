@@ -127,6 +127,7 @@ def get_args_from_yaml(yaml_path):
             'keywords': data_cfg.get('keywords'),
             'keyword_edge_k': data_cfg.get('keyword_edge_k'),
             'additional_feature': data_cfg.get('additional_feature'),
+            'max_seq': data_cfg.get('max_seq'),
             
             # model configs
             'model_type': model_cfg['type'],

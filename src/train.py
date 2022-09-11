@@ -21,6 +21,13 @@ import config
 
 from models.igmc import IGMC
 
+def adj_rating_reg(model):
+    arr_loss = 0
+    for conv in model.convs:
+        weight = conv.weight.view(conv.num_bases, conv.in_feat * conv.out_feat)
+        weight = th.matmul(conv.w_comp, weight).view(conv.num_rels, conv.in_feat, conv.out_feat)
+        arr_loss += th.sum((weight[1:, :, :] - weight[:-1, :, :])**2)
+    return arr_loss
 
 def evaluate(model, loader, device):
     # Evaluate AUC, ACC
@@ -35,10 +42,9 @@ def evaluate(model, loader, device):
         val_preds.extend(preds.cpu().tolist())
     
     val_auc = roc_auc_score(val_labels, val_preds)
-    val_acc = accuracy_score(list(map(round,val_labels)), list(map(round,val_preds)))
+    val_acc = accuracy_score(list(map(round, val_labels)), list(map(round, val_preds)))
     # val_f1 = f1_score(list(map(round,val_labels)), list(map(round,val_preds)))
-    val_f1 = 0
-    return val_auc, val_acc, val_f1
+    return val_auc, val_acc
 
 
 def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval):
@@ -56,7 +62,7 @@ def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval)
         inputs = batch[0].to(device)
         labels = batch[1].to(device)
         preds = model(inputs)
-        loss = loss_fn(preds, labels).mean()
+        loss = loss_fn(preds, labels).mean() + 0.001 * adj_rating_reg(model)
 
         optimizer.zero_grad()
         loss.backward()
@@ -86,7 +92,7 @@ def train(args:EasyDict, logger):
     train_loader, test_loader = get_dataloader(
                                  batch_size=args.batch_size, 
                                  num_workers=NUM_WORKER,
-                                 seq_len=config.MAX_SEQ
+                                 seq_len=args.max_seq
                                  )
 
     ### prepare data and set model
@@ -125,7 +131,7 @@ def train(args:EasyDict, logger):
         train_loss = train_epoch(model, loss_fn, optimizer, train_loader, 
                                  args.device, logger, args.log_interval)
         # val_rmse = eval_func(model, valid_loader, args.device)
-        test_auc, test_acc, test_f1 = eval_func(model, test_loader, args.device)
+        test_auc, test_acc = eval_func(model, test_loader, args.device)
         eval_info = {
             'epoch': epoch_idx,
             'train_loss': train_loss,
@@ -157,37 +163,38 @@ from collections import defaultdict
 from datetime import datetime
 
 def main():
-    with open('./train_configs/train_list.yaml') as f:
-        files = yaml.load(f, Loader=yaml.FullLoader)
-    file_list = files['files']
-    for f in file_list:
-        date_time = datetime.now().strftime("%Y%m%d_%H:%M:%S")
-        args = get_args_from_yaml(f)
-        logger = get_logger(name=args.key, path=f"{args.log_dir}/{args.key}.log")
-        logger.info('train args')
-        for k,v in args.items():
-            logger.info(f'{k}: {v}')
+    while 1:
+        with open('./train_configs/train_list.yaml') as f:
+            files = yaml.load(f, Loader=yaml.FullLoader)
+        file_list = files['files']
+        for f in file_list:
+            date_time = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+            args = get_args_from_yaml(f)
+            logger = get_logger(name=args.key, path=f"{args.log_dir}/{args.key}.log")
+            logger.info('train args')
+            for k,v in args.items():
+                logger.info(f'{k}: {v}')
 
-        test_results = defaultdict(list)
-        best_lr = None
-        # for data_name in args.datasets:
-        sub_args = args
-        # sub_args['data_name'] = data_name
-        best_rmse_list = []
-        for lr in args.train_lrs:
-            sub_args['train_lr'] = lr
-            best_rmse = train(sub_args, logger=logger)
-            # test_results[data_name].append(best_rmse)
-            best_rmse_list.append(best_rmse)
+            test_results = defaultdict(list)
+            best_lr = None
+            # for data_name in args.datasets:
+            sub_args = args
+            # sub_args['data_name'] = data_name
+            best_rmse_list = []
+            for lr in args.train_lrs:
+                sub_args['train_lr'] = lr
+                best_rmse = train(sub_args, logger=logger)
+                # test_results[data_name].append(best_rmse)
+                best_rmse_list.append(best_rmse)
+            
+            logger.info(f"**********The final best testing RMSE is {min(best_rmse_list):.6f} at lr {best_lr}********")
+            logger.info(f"**********The mean testing RMSE is {np.mean(best_rmse_list):.6f}, {np.std(best_rmse_list)} ********")
         
-        logger.info(f"**********The final best testing RMSE is {min(best_rmse_list):.6f} at lr {best_lr}********")
-        logger.info(f"**********The mean testing RMSE is {np.mean(best_rmse_list):.6f}, {np.std(best_rmse_list)} ********")
-    
-        # mean_std_dict = dict()
-        # for dataset, results in test_results.items():
-        #     mean_std_dict[dataset] = [f'{np.mean(results):.4f} ± {np.std(results):.5f}']
-        # mean_std_df = pd.DataFrame(mean_std_dict)
-        # mean_std_df.to_csv(f'./results/{args.key}_{date_time}.csv')
+            # mean_std_dict = dict()
+            # for dataset, results in test_results.items():
+            #     mean_std_dict[dataset] = [f'{np.mean(results):.4f} ± {np.std(results):.5f}']
+            # mean_std_df = pd.DataFrame(mean_std_dict)
+            # mean_std_df.to_csv(f'./results/{args.key}_{date_time}.csv')
         
 if __name__ == '__main__':
     main()
