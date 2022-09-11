@@ -1,0 +1,36 @@
+---
+model:
+  type: IGMC
+  hop: 1
+  in_nfeats: 32
+  out_nfeats: 32
+  in_efeats: 32
+  out_efeats: 32
+  latent_dims:
+    - 32
+    - 32
+    - 32
+    - 32
+  num_heads: 4
+  num_relations: 6
+  edge_dropout: 0.5
+  
+dataset:
+  keyword_edge_k: 5
+
+train:
+  device: 0
+  epochs: 20
+  batch_size: 128
+  learning_rates:
+    - 1e-3
+    # - 1e-3
+    # - 1e-3
+    # - 1e-3
+    # - 1e-3
+  weight_decay: 0.0
+  lr_decay_step: 5
+  lr_decay_factor: 0.90
+  log_interval: 100
+  log_dir: log
+  
