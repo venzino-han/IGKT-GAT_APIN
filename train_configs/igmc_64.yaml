@@ -1,5 +1,5 @@
 ---
-key: igmc
+key: igmc_64
 model:
   type: IGMC
   hop: 1
