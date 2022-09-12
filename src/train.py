@@ -24,7 +24,7 @@ from models.igmc import IGMC
 def adj_rating_reg(model):
     arr_loss = 0
     for conv in model.convs:
-        weight = conv.weight.view(conv.num_bases, conv.in_feat * conv.out_feat)
+        weight = conv.parameters().view(conv.num_bases, conv.in_feat * conv.out_feat)
         weight = th.matmul(conv.w_comp, weight).view(conv.num_rels, conv.in_feat, conv.out_feat)
         arr_loss += th.sum((weight[1:, :, :] - weight[:-1, :, :])**2)
     return arr_loss
@@ -62,7 +62,7 @@ def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval)
         inputs = batch[0].to(device)
         labels = batch[1].to(device)
         preds = model(inputs)
-        loss = loss_fn(preds, labels).mean() + 0.001 * adj_rating_reg(model)
+        loss = loss_fn(preds, labels).mean() #+ 0.001 * adj_rating_reg(model)
 
         optimizer.zero_grad()
         loss.backward()
@@ -147,7 +147,7 @@ def train(args:EasyDict, logger):
             print('lr : ', param['lr'])
 
         if best_auc < test_auc:
-            logger.info(f'new best test auc {test_auc:.6f} acc {best_acc:.6f} ===')
+            logger.info(f'new best test auc {test_auc:.6f} acc {test_acc:.6f} ===')
             best_epoch = epoch_idx
             best_auc = test_auc
             best_acc = test_acc
