@@ -45,12 +45,12 @@ def convert_newid(origin_id:int, id_dict:dict, max_id:int):
     return new_id, id_dict, max_id
 
 
-def reset_id(df, user_col, item_col, cols):
+def reset_id(df, reset_col,  cols):
 
     user_id_dict, item_id_dict, user_ids, item_ids, user_id_max, item_id_max  = {}, {}, [], [], 0, 0        
     
     for i in tqdm(range(len(df))):
-        origin_user_id = df[user_col].iloc[i]
+        origin_user_id = df[reset_col].iloc[i]
         # origin_item_id = df[item_col].iloc[i]
         new_user_id, user_id_dict, user_id_max = convert_newid(origin_user_id, user_id_dict, user_id_max)
         # new_item_id, item_id_dict, item_id_max = convert_newid(origin_item_id, item_id_dict, item_id_max)
@@ -58,7 +58,7 @@ def reset_id(df, user_col, item_col, cols):
         user_ids.append(new_user_id)
         # item_ids.append(new_item_id)
 
-    df[user_col] = user_ids
+    df[reset_col] = user_ids
     # df[item_col] = item_ids
 
     df = df[cols]
@@ -123,7 +123,7 @@ def get_args_from_yaml(yaml_path):
         {   
             'key': cfgs['key'],
 
-            'datasets': data_cfg.get('names'),
+            'dataset': data_cfg['name'],
             'keywords': data_cfg.get('keywords'),
             'keyword_edge_k': data_cfg.get('keyword_edge_k'),
             'additional_feature': data_cfg.get('additional_feature'),

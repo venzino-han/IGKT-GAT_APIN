@@ -1,0 +1,29 @@
+---
+key: igmc_origin_128_assist
+model:
+  type: IGMC
+  hop: 1
+  num_relations: 2
+  latent_dims:
+    - 32
+    - 32
+    - 32
+    - 32
+  edge_dropout: 0.
+
+dataset:
+  max_seq: 128
+
+train:
+  device: 0
+  epochs: 20
+  batch_size: 64
+  learning_rates:
+    - 1e-3
+    - 2e-3
+    - 5e-4
+  weight_decay: 0.0
+  lr_decay_step: 5
+  lr_decay_factor: 0.98
+  log_interval: 100
+  log_dir: log

@@ -16,18 +16,14 @@ from sklearn.metrics import roc_auc_score, accuracy_score, f1_score
 
 from utils import get_logger, get_args_from_yaml
 from data_generator import get_dataloader
+from data_generator_assist import get_dataloader_assist
 import config
 
 
 from models.igmc import IGMC
+from models.igkt import IGKT_TS
+from models.igakt import IGAKT
 
-def adj_rating_reg(model):
-    arr_loss = 0
-    for conv in model.convs:
-        weight = conv.parameters().view(conv.num_bases, conv.in_feat * conv.out_feat)
-        weight = th.matmul(conv.w_comp, weight).view(conv.num_rels, conv.in_feat, conv.out_feat)
-        arr_loss += th.sum((weight[1:, :, :] - weight[:-1, :, :])**2)
-    return arr_loss
 
 def evaluate(model, loader, device):
     # Evaluate AUC, ACC
@@ -47,7 +43,7 @@ def evaluate(model, loader, device):
     return val_auc, val_acc
 
 
-def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval):
+def train_epoch(model, optimizer, loader, device, logger, log_interval):
     model.train()
 
     epoch_loss = 0.
@@ -55,6 +51,8 @@ def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval)
     iter_mse = 0.
     iter_cnt = 0
     iter_dur = []
+    mse_loss_fn = nn.MSELoss().to(device)
+    bce_loss_fn = nn.BCELoss().to(device)
 
     for iter_idx, batch in enumerate(loader, start=1):
         t_start = time.time()
@@ -62,7 +60,7 @@ def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval)
         inputs = batch[0].to(device)
         labels = batch[1].to(device)
         preds = model(inputs)
-        loss = loss_fn(preds, labels).mean() #+ 0.001 * adj_rating_reg(model)
+        loss = mse_loss_fn(preds, labels) + bce_loss_fn(preds, labels)
 
         optimizer.zero_grad()
         loss.backward()
@@ -84,16 +82,10 @@ def train_epoch(model, loss_fn, optimizer, loader, device, logger, log_interval)
 
 
 NUM_WORKER = 16
-def train(args:EasyDict, logger):
+def train(args:EasyDict, train_loader, test_loader, logger):
     th.manual_seed(0)
     np.random.seed(0)
     dgl.random.seed(0)
-
-    train_loader, test_loader = get_dataloader(
-                                 batch_size=args.batch_size, 
-                                 num_workers=NUM_WORKER,
-                                 seq_len=args.max_seq
-                                 )
 
     ### prepare data and set model
     in_feats = (args.hop+1)*2 
@@ -106,11 +98,25 @@ def train(args:EasyDict, logger):
                      edge_dropout=args.edge_dropout,
                      ).to(args.device)
 
+    if args.model_type == 'IGKT_TS':
+        model = IGKT_TS(in_feats=in_feats, 
+                     latent_dim=args.latent_dims,
+                     num_relations=args.num_relations, 
+                     num_bases=4, 
+                     regression=True,
+                     edge_dropout=args.edge_dropout,
+                     ).to(args.device)
+
+    if args.model_type == 'IGAKT':
+        model = IGAKT(in_nfeats=in_feats,
+                     in_efeats=2, 
+                     latent_dim=args.latent_dims,
+                     edge_dropout=args.edge_dropout,
+                     ).to(args.device)
+
     if args.parameters is not None:
         model.load_state_dict(th.load(f"./parameters/{args.parameters}"))
         
-    # loss_fn = nn.MSELoss().to(args.device)
-    loss_fn = nn.BCEWithLogitsLoss().to(args.device)
     optimizer = optim.Adam(model.parameters(), lr=args.train_lr, weight_decay=args.weight_decay)
     logger.info("Loading network finished ...\n")
 
@@ -128,9 +134,10 @@ def train(args:EasyDict, logger):
     for epoch_idx in epochs:
         logger.debug(f'Epoch : {epoch_idx}')
     
-        train_loss = train_epoch(model, loss_fn, optimizer, train_loader, 
-                                 args.device, logger, args.log_interval)
-        # val_rmse = eval_func(model, valid_loader, args.device)
+        train_loss = train_epoch(model, optimizer, train_loader, 
+                                 args.device, logger, 
+                                 log_interval=args.log_interval
+                                 )
         test_auc, test_acc = eval_func(model, test_loader, args.device)
         eval_info = {
             'epoch': epoch_idx,
@@ -151,16 +158,20 @@ def train(args:EasyDict, logger):
             best_epoch = epoch_idx
             best_auc = test_auc
             best_acc = test_acc
-            # best_rmse = test_rmse
-            # best_state = copy.deepcopy(model.state_dict())
+            best_state = copy.deepcopy(model.state_dict())
         
-    # th.save(best_state, f'./parameters/{args.key}_{args.data_name}_{best_rmse:.4f}.pt')
+    th.save(best_state, f'./parameters/{args.key}_{args.data_name}_{best_auc:.4f}.pt')
     logger.info(f"Training ends. The best testing auc is {best_auc:.6f} acc {best_acc:.6f} at epoch {best_epoch}")
     return test_auc
     
 import yaml
 from collections import defaultdict
 from datetime import datetime
+
+DATALOADER_MAP = {
+    'assist':get_dataloader_assist,
+    'edunet':get_dataloader,
+}
 
 def main():
     while 1:
@@ -175,26 +186,24 @@ def main():
             for k,v in args.items():
                 logger.info(f'{k}: {v}')
 
-            test_results = defaultdict(list)
             best_lr = None
-            # for data_name in args.datasets:
             sub_args = args
-            # sub_args['data_name'] = data_name
             best_rmse_list = []
+
+            dataloader_manager = DATALOADER_MAP.get(sub_args.dataset)
+            train_loader, test_loader = dataloader_manager(batch_size=sub_args.batch_size, 
+                                                                num_workers=NUM_WORKER,
+                                                                seq_len=sub_args.max_seq
+                                                           )
+
             for lr in args.train_lrs:
                 sub_args['train_lr'] = lr
-                best_rmse = train(sub_args, logger=logger)
-                # test_results[data_name].append(best_rmse)
+                best_rmse = train(sub_args, train_loader, test_loader, logger=logger)
                 best_rmse_list.append(best_rmse)
             
             logger.info(f"**********The final best testing RMSE is {min(best_rmse_list):.6f} at lr {best_lr}********")
             logger.info(f"**********The mean testing RMSE is {np.mean(best_rmse_list):.6f}, {np.std(best_rmse_list)} ********")
         
-            # mean_std_dict = dict()
-            # for dataset, results in test_results.items():
-            #     mean_std_dict[dataset] = [f'{np.mean(results):.4f} ± {np.std(results):.5f}']
-            # mean_std_df = pd.DataFrame(mean_std_dict)
-            # mean_std_df.to_csv(f'./results/{args.key}_{date_time}.csv')
         
 if __name__ == '__main__':
     main()

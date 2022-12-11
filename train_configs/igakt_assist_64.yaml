@@ -1,7 +1,7 @@
 ---
-key: igmc_64
+key: igakt_assist_64
 model:
-  type: IGMC
+  type: IGAKT
   hop: 1
   num_relations: 6
   latent_dims:
@@ -12,15 +12,15 @@ model:
   edge_dropout: 0.
 
 dataset:
+  name: assist
   max_seq: 64
-#   name: amazon_clothing
 
 train:
   device: 0
   epochs: 20
   batch_size: 128
   learning_rates:
-    - 1e-4
+    - 1e-3
     - 2e-3
     - 5e-4
   weight_decay: 0.0

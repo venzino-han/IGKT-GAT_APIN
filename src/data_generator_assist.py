@@ -1,12 +1,12 @@
-
 import pickle
 import numpy as np
 import pandas as pd
 
 import torch as th
 from torch.utils.data import Dataset, DataLoader
-
 from scipy.sparse import coo_matrix
+
+from data_generator import get_subgraph_label
 
 import dgl
 
@@ -16,36 +16,6 @@ def one_hot(idx, length):
     x = th.zeros([len(idx), length], dtype=th.int32)
     x[th.arange(len(idx)), idx] = 1.0
     return x  
-
-#######################
-# Subgraph Extraction 
-#######################
-def get_subgraph_label(graph:dgl.graph,
-                       u_node_idx:th.tensor, i_node_idx:th.tensor,
-                       u_neighbors:th.tensor, i_neighbors:th.tensor,
-                       )->dgl.graph:
-    nodes = th.cat([u_node_idx, i_node_idx, u_neighbors, i_neighbors], dim=0,) 
-    nodes = nodes.type(th.int32)
-    subgraph = dgl.node_subgraph(graph, nodes, store_ids=True) 
-    node_labels = [0,1] + [2]*len(u_neighbors) + [3]*len(i_neighbors)
-    subgraph.ndata['nlabel'] = one_hot(node_labels, 4)
-    subgraph.ndata['x'] = subgraph.ndata['nlabel']
-
-    # set edge mask to zero as to remove links between target nodes in training process
-    subgraph = dgl.add_self_loop(subgraph)
-    subgraph.edata['edge_mask'] = th.ones(subgraph.number_of_edges(), dtype=th.float32)
-    target_edges = subgraph.edge_ids([0, 1], [1, 0], return_uv=False)
-
-    # normalized timestamp
-    timestamps = subgraph.edata['ts']
-    standard_ts = timestamps[target_edges.to(th.long)[0]]
-    timestamps = timestamps - standard_ts.item()
-    timestamps = th.clamp(1 - (timestamps - th.min(timestamps)) / (th.max(timestamps)-th.min(timestamps) + 1e-5), min=th.min(timestamps), max=standard_ts)
-    subgraph.edata['ts'] = timestamps + 1e-9
-    rating, ts = subgraph.edata['label'].unsqueeze(1), subgraph.edata['ts'].unsqueeze(1)
-    subgraph.edata['efeat'] = th.cat([rating, ts], dim=1)
-    subgraph.remove_edges(target_edges)
-    return subgraph
 
 
 class KT_Sequence_Graph(Dataset):
@@ -64,7 +34,8 @@ class KT_Sequence_Graph(Dataset):
         # get user seqs
         for user_id in user_groups.index:
             self.user_id_set.add(user_id)
-            c_id, part, t_c_id, t_lag, q_et, ans_c, q_he, u_ans, ts = user_groups[user_id]
+            # "user_id", "content_id", "answered_correctly", "timestamp", 'part'
+            c_id, ans_c, ts, part = user_groups[user_id]
 
             n = len(c_id)
             uids.extend([user_id]*n)
@@ -79,9 +50,7 @@ class KT_Sequence_Graph(Dataset):
                 if initial > 2:
                     self.user_ids.append(f"{user_id}_0")
                     self.user_seq_dict[f"{user_id}_0"] = (
-                        c_id[:initial], part[:initial], t_c_id[:initial], t_lag[:initial], 
-                        q_et[:initial], ans_c[:initial], q_he[:initial], u_ans[:initial],
-                        ts[:initial]
+                        c_id[:initial], part[:initial], ans_c[:initial], ts[:initial]
                     )
                 chunks = len(c_id)//self.seq_len
                 for c in range(chunks):
@@ -89,20 +58,18 @@ class KT_Sequence_Graph(Dataset):
                     end = initial + (c+1)*self.seq_len
                     self.user_ids.append(f"{user_id}_{c+1}")
                     self.user_seq_dict[f"{user_id}_{c+1}"] = (
-                        c_id[start:end], part[start:end], t_c_id[start:end], t_lag[start:end], 
-                        q_et[start:end], ans_c[start:end], q_he[start:end], u_ans[start:end],
-                        ts[start:end]
+                        c_id[start:end], part[start:end], ans_c[start:end], ts[start:end]
                     )
             else:
                 self.user_ids.append(f"{user_id}")
-                self.user_seq_dict[f"{user_id}"] = (c_id, part, t_c_id, t_lag, q_et, ans_c, q_he, u_ans, ts)
+                self.user_seq_dict[f"{user_id}"] = (c_id, part, ans_c, ts)
         
         self.item_seq_dict = {}
         for user_seq_id in self.user_ids:
             user_seq = self.user_seq_dict[user_seq_id]
             target_cid = user_seq[0]
             target_cid = target_cid[-1]
-            u_id, part, t_c_id, t_lag, q_et, ans_c, q_he, u_ans, ts = item_groups[target_cid]
+            u_id, ans_c, ts, part = item_groups[target_cid]
             n = self.seq_len #*2
             if n > len(u_id):
                 n =len(u_id)
@@ -116,11 +83,12 @@ class KT_Sequence_Graph(Dataset):
         ts = df['timestamp']
         ts=(ts-ts.min())/(ts.max()-ts.min())
         num_user = max(uids)+1
-        print(num_user)
-        print(num_user+config.TOTAL_EXE)
 
-        uids += config.TOTAL_EXE
-        num_nodes = num_user+config.TOTAL_EXE
+        print(num_user)
+        print(num_user+config.ASSIST_EXE)
+
+        uids += config.ASSIST_EXE
+        num_nodes = num_user+config.ASSIST_EXE
 
         src_nodes = np.concatenate((uids, eids))
         dst_nodes = np.concatenate((eids, uids))
@@ -137,12 +105,13 @@ class KT_Sequence_Graph(Dataset):
         self.graph.edata['ts'] = th.tensor(ts, dtype=th.float32)
         ts_max = self.graph.edata['ts'].max()
 
+
         src, dst, etypes = [], [], []
 
         print('--------------------------- node degree before')
         print(self.graph.in_degrees().float().mean())
         print('--------------------------- node degree after')
-        
+
         print('start part')
         for i in self.part_matrix.keys():
             for j in self.part_matrix[i].keys():
@@ -161,18 +130,22 @@ class KT_Sequence_Graph(Dataset):
                 if tag_coo == 1:
                     src.append(i)
                     dst.append(j)
-                    etypes.append(3)
+                    etypes.append(2)
                 elif tag_coo == 2:
                     src.append(i)
                     dst.append(j)
-                    etypes.append(4)
+                    etypes.append(3)
                 elif tag_coo >= 3:
                     src.append(i)
                     dst.append(j)
-                    etypes.append(5)
+                    etypes.append(4)
                
         print('start adding edges')
         n_edges =  len(etypes)
+
+        # LIMIT = 100000
+
+        # etypes=etypes[:LIMIT]
         edata = {
             'etype': th.tensor(np.array(etypes), dtype=th.int32),
             'label': th.tensor(np.array([1.]*n_edges), dtype=th.float32),
@@ -187,26 +160,20 @@ class KT_Sequence_Graph(Dataset):
     
     def __getitem__(self, index):
         user_seq_id = self.user_ids[index]
-        c_id, p, t_c_id, t_lag, q_et, ans_c, q_he, u_ans, ts = self.user_seq_dict[user_seq_id]
+        c_id, part, ans_c, ts = self.user_seq_dict[user_seq_id]
         u_id = self.item_seq_dict[user_seq_id]
         seq_len = len(c_id)
 
         #build graph
-        # content_ids = content_ids[1:]
-        # parts = parts[1:]
         label = ans_c[1:] - 1
         label = np.clip(label, 0, 1)
         
-        answer_correct = ans_c[:-1]
-        # ques_had_explian = ques_had_explian[1:]
-        user_answer = u_ans[:-1]
-
         target_item_id = c_id[-1]
         label = label[-1]
 
         #build graph
-        u_idx, i_idx = int(user_seq_id.split('_')[0])+config.TOTAL_EXE, target_item_id
-        u_neighbors, i_neighbors = u_id+config.TOTAL_EXE, c_id[:-1]
+        u_idx, i_idx = int(user_seq_id.split('_')[0])+config.ASSIST_EXE, target_item_id
+        u_neighbors, i_neighbors = u_id+config.ASSIST_EXE, c_id[:-1]
         u_neighbors = u_neighbors[u_neighbors!=i_idx]
         i_neighbors = i_neighbors[i_neighbors!=u_idx]
 
@@ -227,19 +194,19 @@ def collate_data(data):
     g_label = th.stack(label_list)
     return g, g_label
 
-def get_dataloader(data_path='edunet', batch_size=128, num_workers=8, seq_len=64):
-    with open(f'./data/{data_path}/part_matrix.pkl', 'rb') as pick:
+def get_dataloader_assist(batch_size, num_workers=8, seq_len=64):
+    with open('./data/assist/part_matrix.pkl', 'rb') as pick:
         part_matrix = pickle.load(pick)
-    with open(f"data/{data_path}/tag_coo_matrix.pkl", 'rb') as pick:
+    with open("data/assist/tag_coo_matrix.pkl", 'rb') as pick:
         tag_coo_matrix = pickle.load(pick)
 
 
-    train_df = pd.read_csv(f'data/{data_path}/train_df.csv')
-    test_df = pd.read_csv(f'data/{data_path}/test_df.csv')
+    train_df = pd.read_csv('data/assist/train_df.csv')
+    test_df = pd.read_csv('data/assist/test_df.csv')
 
-    with open(f"data/{data_path}/train_user_group.pkl.zip", 'rb') as pick:
+    with open("data/assist/train_user_group.pkl.zip", 'rb') as pick:
         train_user_group = pickle.load(pick)
-    with open(f"data/{data_path}/train_item_group.pkl.zip", 'rb') as pick:
+    with open("data/assist/train_item_group.pkl.zip", 'rb') as pick:
         train_item_group = pickle.load(pick)
     
     train_seq_graph = KT_Sequence_Graph(train_user_group, train_item_group, df=train_df, 
@@ -247,9 +214,9 @@ def get_dataloader(data_path='edunet', batch_size=128, num_workers=8, seq_len=64
     train_loader = DataLoader(train_seq_graph, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                                 collate_fn=collate_data, pin_memory=True)
 
-    with open(f"data/{data_path}/val_user_group.pkl.zip", 'rb') as pick:
+    with open("data/assist/val_user_group.pkl.zip", 'rb') as pick:
         val_user_group = pickle.load(pick)
-    with open(f"data/{data_path}/val_item_group.pkl.zip", 'rb') as pick:
+    with open("data/assist/val_item_group.pkl.zip", 'rb') as pick:
         val_item_group = pickle.load(pick)
 
     test_seq_graph = KT_Sequence_Graph(val_user_group, val_item_group, df=test_df, 
@@ -260,15 +227,17 @@ def get_dataloader(data_path='edunet', batch_size=128, num_workers=8, seq_len=64
     return train_loader, test_loader
 
 
+
 if __name__=="__main__":
-    train_loader, _ = get_dataloader(data_path='edunet',
-                                     batch_size=32, 
-                                     num_workers=8,
-                                     seq_len=32
-                                     )
-    for subg, label in train_loader:
-        print(subg)
-        print(subg.edata['ts'])
+    with open("data/assist/train_user_group.pkl.zip", 'rb') as pick:
+        train_user_group = pickle.load(pick)
+    with open("data/assist/train_item_group.pkl.zip", 'rb') as pick:
+        train_item_group = pickle.load(pick)
+
+    train_loader, test_loader = get_dataloader(batch_size=1)
+
+    for batch, label in train_loader:
+        print(batch)
+        print(label.shape)
         print(label)
         break
-
