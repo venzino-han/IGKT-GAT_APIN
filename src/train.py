@@ -170,7 +170,7 @@ from datetime import datetime
 
 DATALOADER_MAP = {
     'assist':get_dataloader_assist,
-    'edunet':get_dataloader,
+    'ednet':get_dataloader,
 }
 
 def main():

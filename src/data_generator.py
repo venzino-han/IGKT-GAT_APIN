@@ -227,7 +227,7 @@ def collate_data(data):
     g_label = th.stack(label_list)
     return g, g_label
 
-def get_dataloader(data_path='edunet', batch_size=128, num_workers=8, seq_len=64):
+def get_dataloader(data_path='ednet', batch_size=128, num_workers=8, seq_len=64):
     with open(f'./data/{data_path}/part_matrix.pkl', 'rb') as pick:
         part_matrix = pickle.load(pick)
     with open(f"data/{data_path}/tag_coo_matrix.pkl", 'rb') as pick:
@@ -261,7 +261,7 @@ def get_dataloader(data_path='edunet', batch_size=128, num_workers=8, seq_len=64
 
 
 if __name__=="__main__":
-    train_loader, _ = get_dataloader(data_path='edunet',
+    train_loader, _ = get_dataloader(data_path='ednet',
                                      batch_size=32, 
                                      num_workers=8,
                                      seq_len=32

@@ -12,7 +12,7 @@ model:
   edge_dropout: 0.
 
 dataset:
-  name: edunet
+  name: ednet
   max_seq: 128
 
 train:
