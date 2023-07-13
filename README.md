@@ -1,5 +1,5 @@
-# igkt
-inductive graph knowledge tracing model
+# IGKT
+Inductive Graph Knowledge Tracing
 
 # Datasets 
 - EdNet dataset from : https://github.com/riiid/ednet
