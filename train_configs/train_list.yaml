@@ -1,12 +1,13 @@
 files:
   # - ./train_configs/igmc_128.yaml
   # - ./train_configs/igmc_64.yaml
+  # - ./train_configs/igmc_origin_64_assist.yaml
   - ./train_configs/igkt_ts_assist_64.yaml
-  - ./train_configs/igkt_ts_assist_128.yaml
+  # - ./train_configs/igkt_ts_assist_128.yaml
   # - ./train_configs/igkt_ts_64.yaml
   # - ./train_configs/igkt_ts_128.yaml
   - ./train_configs/igakt_assist_64.yaml
-  - ./train_configs/igakt_assist_128.yaml
+  # - ./train_configs/igakt_assist_128.yaml
   # - ./train_configs/igakt_64.yaml
   # - ./train_configs/igakt_128.yaml
   # - ./train_configs/igmc_16.yaml
@@ -15,7 +16,4 @@ files:
   # - ./train_configs/igmc_64_part_assist.yaml
   # - ./train_configs/igmc_64_tag_assist.yaml
   # - ./train_configs/igmc_origin_128_assist.yaml
-  # - ./train_configs/igmc_origin_64_assist.yaml
   # - ./train_configs/igmc_32.yaml
-  # - ./train_configs/igmc_256.yaml
-  # - ./train_configs/igmc_512.yaml

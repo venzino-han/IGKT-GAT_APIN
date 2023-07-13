@@ -13,7 +13,7 @@ Inductive Graph Knowledge Tracing
 
 # Train 
 1. `make up` : build docker image and start docker container
-2. check `train_config/train_list.ymal` file (default: assist2017 with igmc, igkt, igkt_ts and igkt_gat)
+2. check `train_config/train_list.ymal` file (default: assist2017 with igkt_ts and igkt_gat)
 3. `python3 src/train.py` : start train in docker container
 
 <br />
