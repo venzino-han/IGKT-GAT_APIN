@@ -4,7 +4,6 @@ Inductive Graph Knowledge Tracing
 # Datasets 
 - EdNet dataset from : https://github.com/riiid/ednet
 - ASSIST2017 dataset from : https://sites.google.com/view/assistmentsdatamining
-- Pre-processed dataset in `data` directory. (only ASSIST2017 dataset in this repository)
 <br />
 
 # Docker Container
