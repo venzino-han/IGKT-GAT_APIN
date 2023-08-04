@@ -7,3 +7,4 @@ nltk
 sklearn
 sentence_transformers
 langdetect
+gdown

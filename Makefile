@@ -1,7 +1,7 @@
 default: build
 
 help:
-	@echo 'Management commands for kgmc:'
+	@echo 'Management commands for igkt:'
 	@echo
 	@echo 'Usage:'
 	@echo '    make build            Build image'
@@ -12,19 +12,19 @@ preprocess:
 
 build:
 	@echo "Building Docker image"
-	@docker build . -t kgmc 
+	@docker build . -t igkt 
 
 run:
 	@echo "Booting up Docker Container"
-	@docker run -it --gpus '"device=0"' --ipc=host --name kgmc -v `pwd`:/workspace/kgmc kgmc:latest /bin/bash
+	@docker run -it --gpus '"device=0"' --ipc=host --name igkt -v `pwd`:/workspace/igkt igkt:latest /bin/bash
 
 up: build run
 
 rm: 
-	@docker rm kgmc
+	@docker rm igkt
 
 stop:
-	@docker stop kgmc
+	@docker stop igkt
 
 reset: stop rm
 
