@@ -1,5 +1,5 @@
 # IGKT
-Inductive Graph Knowledge Tracing
+Temporal Enhanced Inductive Graph Knowledge Tracing
 
 # Datasets 
 - EdNet dataset from : https://github.com/riiid/ednet
