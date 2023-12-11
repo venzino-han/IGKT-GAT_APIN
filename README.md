@@ -1,5 +1,17 @@
-# IGKT
-Temporal Enhanced Inductive Graph Knowledge Tracing
+# Temporal Enhanced Inductive Graph Knowledge Tracing
+IGKT-GAT
+[Applied Intelligence 2023](https://link.springer.com/article/10.1007/s10489-023-05083-5)
+
+```
+@article{han2023temporal,
+  title={Temporal enhanced inductive graph knowledge tracing},
+  author={Han, Donghee and Kim, Daehee and Kim, Minsu and Han, Keejun and Yi, Mun Yong},
+  journal={Applied Intelligence},
+  pages={1--18},
+  year={2023},
+  publisher={Springer}
+}
+```
 
 # Datasets 
 - EdNet dataset from : https://github.com/riiid/ednet
